@@ -2,11 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signIn } from '@/lib/auth';
-import Input from '@/components/ui/Input';
-import Button from '@/components/ui/Button';
-import Alert from '@/components/ui/Alert';
-import { Mail, Lock } from 'lucide-react';
+import { signIn, getUserData } from '@/lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,8 +27,21 @@ export default function LoginPage() {
       return;
     }
     
-    // Redirect will happen automatically through useAuth hook
-    router.push('/');
+    // Get user role from Firestore
+    const { data: userData } = await getUserData(user.uid);
+    
+    // Redirect based on role
+    if (userData?.role === 'admin') {
+      router.push('/admin');
+    } else if (userData?.role === 'teacher') {
+      router.push('/teacher');
+    } else if (userData?.role === 'student') {
+      router.push('/student');
+    } else {
+      router.push('/');
+    }
+    
+    setLoading(false);
   };
   
   return (
@@ -45,35 +54,49 @@ export default function LoginPage() {
         
         <div className="p-8">
           {error && (
-            <Alert type="error" message={error} onClose={() => setError('')} className="mb-6" />
+            <div className="bg-red-50 border-l-4 border-red-600 p-4 mb-6 rounded">
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
           )}
           
           <form onSubmit={handleSubmit}>
-            <Input
-              label="Email Address"
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="Enter your email"
-              required
-              icon={<Mail className="w-5 h-5" />}
-            />
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Email Address <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="Enter your email"
+                required
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200"
+              />
+            </div>
             
-            <Input
-              label="Password"
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="Enter your password"
-              required
-              icon={<Lock className="w-5 h-5" />}
-            />
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Password <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Enter your password"
+                required
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200"
+              />
+            </div>
             
-            <Button type="submit" fullWidth disabled={loading} className="mt-6">
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               {loading ? 'Logging in...' : 'Login'}
-            </Button>
+            </button>
           </form>
           
           <div className="mt-6 text-center">
