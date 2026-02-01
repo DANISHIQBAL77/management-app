@@ -7,9 +7,26 @@ import { useFirestore } from '@/lib/hooks/useFirestore';
 
 export default function StudentDashboard() {
   const { user, userData } = useAuth();
+  
+  // Existing Assignments Fetch
   const { documents: assignments } = useFirestore('assignments', [
     { field: 'classId', operator: '==', value: userData?.classId || '' }
   ]);
+
+  // Backend Integration: Fetch Attendance
+  const { documents: attendanceData } = useFirestore('attendance', [
+    { field: 'studentId', operator: '==', value: user?.uid || '' }
+  ]);
+
+  // Backend Integration: Fetch Announcements
+  const { documents: announcements } = useFirestore('notifications', [
+    { field: 'recipientId', operator: 'in', value: ['all', user?.uid || ''] }
+  ]);
+
+  // Calculation for Attendance Percentage
+  const totalDays = attendanceData.length;
+  const presentDays = attendanceData.filter(doc => doc.status === 'present').length;
+  const attendancePercentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
   
   const stats = [
     {
@@ -26,7 +43,7 @@ export default function StudentDashboard() {
     },
     {
       title: 'Attendance',
-      value: '85%',
+      value: `${attendancePercentage}%`, // Integrated backend value
       icon: Calendar,
       color: 'from-green-500 to-emerald-500',
     },
@@ -78,7 +95,19 @@ export default function StudentDashboard() {
           </Card>
           
           <Card title="Recent Announcements">
-            <p className="text-gray-600">No recent announcements</p>
+            {/* Backend Integration: Showing dynamic announcements */}
+            {announcements.length === 0 ? (
+              <p className="text-gray-600">No recent announcements</p>
+            ) : (
+              <div className="space-y-3">
+                {announcements.slice(0, 5).map(announcement => (
+                  <div key={announcement.id} className="p-3 border-l-4 border-blue-500 bg-gray-50 rounded-r-lg">
+                    <p className="font-semibold text-gray-900">{announcement.title}</p>
+                    <p className="text-sm text-gray-600">{announcement.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       </div>
