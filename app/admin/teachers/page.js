@@ -11,7 +11,6 @@ export default function TeachersPage() {
   const { user, userData, loading: authLoading } = useAuth();
   const router = useRouter();
   const [teachers, setTeachers] = useState([]);
-  const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState(null);
@@ -37,7 +36,6 @@ export default function TeachersPage() {
   useEffect(() => {
     if (user && userData?.role === 'admin') {
       fetchTeachers();
-      fetchClasses();
     }
   }, [user, userData]);
 
@@ -58,19 +56,6 @@ export default function TeachersPage() {
     }
   };
 
-  const fetchClasses = async () => {
-    try {
-      const querySnapshot = await getDocs(collection(db, 'classes'));
-      const classesData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setClasses(classesData);
-    } catch (error) {
-      console.error('Error fetching classes:', error);
-    }
-  };
-
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -80,7 +65,6 @@ export default function TeachersPage() {
     
     try {
       if (editingTeacher) {
-        // Update existing teacher
         const teacherRef = doc(db, 'users', editingTeacher.id);
         const { password, ...updateData } = formData;
         await updateDoc(teacherRef, {
@@ -89,15 +73,13 @@ export default function TeachersPage() {
         });
         setAlert({ type: 'success', message: 'Teacher updated successfully!' });
       } else {
-        // Create new teacher with auth
         const userCredential = await createUserWithEmailAndPassword(
           auth,
           formData.email,
           formData.password
         );
         
-        // Add to Firestore
-        await addDoc(collection(db, 'users'), {
+        const docRef = await addDoc(collection(db, 'users'), {
           name: formData.name,
           email: formData.email,
           phone: formData.phone,
@@ -168,16 +150,15 @@ export default function TeachersPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-      {/* Navbar */}
       <nav className="bg-white shadow-lg border-b-4 border-blue-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-4">
               <button onClick={() => router.push('/admin')} className="text-gray-600 hover:text-gray-900">
-                ← Back
+                Back
               </button>
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-lg font-bold text-xl">
-                🎓 Teachers Management
+                Teachers Management
               </div>
             </div>
           </div>
@@ -185,7 +166,6 @@ export default function TeachersPage() {
       </nav>
 
       <div className="max-w-7xl mx-auto p-8">
-        {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900">Teachers</h1>
           <button
@@ -197,7 +177,6 @@ export default function TeachersPage() {
           </button>
         </div>
 
-        {/* Alert */}
         {alert && (
           <div className={`mb-6 p-4 rounded-lg ${alert.type === 'success' ? 'bg-green-50 border-l-4 border-green-600 text-green-800' : 'bg-red-50 border-l-4 border-red-600 text-red-800'}`}>
             <div className="flex items-center justify-between">
@@ -207,7 +186,6 @@ export default function TeachersPage() {
           </div>
         )}
 
-        {/* Teachers Table */}
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -259,10 +237,9 @@ export default function TeachersPage() {
         </div>
       </div>
 
-      {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-screen overflow-y-auto">
             <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 flex items-center justify-between">
               <h2 className="text-2xl font-bold text-white">
                 {editingTeacher ? 'Edit Teacher' : 'Add New Teacher'}

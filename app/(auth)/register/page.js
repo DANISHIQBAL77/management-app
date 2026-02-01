@@ -2,22 +2,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signUp } from '@/lib/auth';
-import Input, { Select } from '@/components/ui/Input';
-import Button from '@/components/ui/Button';
-import Alert from '@/components/ui/Alert';
-import { Mail, Lock, User, Phone } from 'lucide-react';
-import { USER_ROLES } from '@/lib/utils/constants';
+import { signIn, getUserData } from '@/lib/auth';
 
-export default function RegisterPage() {
+export default function LoginPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    phone: '',
-    role: '',
-  });
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   
@@ -30,8 +19,7 @@ export default function RegisterPage() {
     setLoading(true);
     setError('');
     
-    const { password, ...userData } = formData;
-    const { user, error: authError } = await signUp(formData.email, password, userData);
+    const { user, error: authError } = await signIn(formData.email, formData.password);
     
     if (authError) {
       setError(authError);
@@ -39,89 +27,90 @@ export default function RegisterPage() {
       return;
     }
     
-    router.push('/login');
+    const { data: userData } = await getUserData(user.uid);
+    
+    if (userData?.role === 'admin') {
+      router.push('/admin');
+    } else if (userData?.role === 'teacher') {
+      router.push('/teacher');
+    } else if (userData?.role === 'student') {
+      router.push('/student');
+    } else {
+      router.push('/');
+    }
+    
+    setLoading(false);
   };
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 flex items-center justify-center p-4">
+      {/* Back to Home Button */}
+      <Link 
+        href="/"
+        className="absolute top-8 left-8 flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition-all font-semibold"
+      >
+        <span className="text-xl">←</span>
+        Back to Home
+      </Link>
+
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-8 text-white text-center">
-          <h1 className="text-4xl font-bold mb-2">🎓 Join Us</h1>
-          <p className="text-blue-100">Create your account</p>
+          <h1 className="text-4xl font-bold mb-2">🎓 Welcome Back</h1>
+          <p className="text-blue-100">Login to your account</p>
         </div>
         
         <div className="p-8">
           {error && (
-            <Alert type="error" message={error} onClose={() => setError('')} className="mb-6" />
+            <div className="bg-red-50 border-l-4 border-red-600 p-4 mb-6 rounded">
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
           )}
           
           <form onSubmit={handleSubmit}>
-            <Input
-              label="Full Name"
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="Enter your full name"
-              required
-              icon={<User className="w-5 h-5" />}
-            />
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Email Address <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="Enter your email"
+                required
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200"
+              />
+            </div>
             
-            <Input
-              label="Email Address"
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="Enter your email"
-              required
-              icon={<Mail className="w-5 h-5" />}
-            />
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Password <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Enter your password"
+                required
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200"
+              />
+            </div>
             
-            <Input
-              label="Phone Number"
-              type="tel"
-              name="phone"
-              value={formData.phone}
-              onChange={handleChange}
-              placeholder="Enter phone number"
-              required
-              icon={<Phone className="w-5 h-5" />}
-            />
-            
-            <Select
-              label="Role"
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-              required
-              options={[
-                { value: USER_ROLES.STUDENT, label: 'Student' },
-                { value: USER_ROLES.TEACHER, label: 'Teacher' },
-              ]}
-            />
-            
-            <Input
-              label="Password"
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="Create a password"
-              required
-              icon={<Lock className="w-5 h-5" />}
-            />
-            
-            <Button type="submit" fullWidth disabled={loading} className="mt-6">
-              {loading ? 'Creating account...' : 'Register'}
-            </Button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Logging in...' : 'Login'}
+            </button>
           </form>
           
           <div className="mt-6 text-center">
             <p className="text-gray-600">
-              Already have an account?{' '}
-              <Link href="/login" className="text-blue-600 font-semibold hover:underline">
-                Login here
+              Don't have an account?{' '}
+              <Link href="/register" className="text-blue-600 font-semibold hover:underline">
+                Register here
               </Link>
             </p>
           </div>
