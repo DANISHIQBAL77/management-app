@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import Link from 'next/link';
-import { Bell, X, CheckCircle } from 'lucide-react';
+import { Bell, X, CheckCircle, Clock, BookOpen, User } from 'lucide-react';
 
 export default function TeacherDashboard() {
   const { user, userData, loading: authLoading } = useAuth();
@@ -17,12 +17,15 @@ export default function TeacherDashboard() {
   const [studentCount, setStudentCount] = useState('0');
   const [dataLoading, setDataLoading] = useState(true);
 
+  // New State for Recent Activity
+  const [recentSubmissions, setRecentSubmissions] = useState([]);
+  const [todayClasses, setTodayClasses] = useState([]);
+
   // Notifications State
   const [notifications, setNotifications] = useState([]);
   const [showNotifs, setShowNotifs] = useState(false);
   const notificationRef = useRef(null);
 
-  // Close popup when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
@@ -41,8 +44,8 @@ export default function TeacherDashboard() {
         router.push(`/${userData.role}`);
       } else {
         fetchDashboardData();
+        fetchRecentActivity(); // New fetch call
         
-        // Real-time Notification Listener
         const q = query(
           collection(db, 'notifications'),
           where('recipientId', '==', user.uid),
@@ -91,6 +94,34 @@ export default function TeacherDashboard() {
     }
   };
 
+  const fetchRecentActivity = async () => {
+    try {
+      // 1. Fetch Today's Classes
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const today = days[new Date().getDay()];
+      
+      const todayClassesQ = query(
+        collection(db, 'classes'),
+        where('teacherId', '==', user.uid),
+        where('scheduleDays', 'array-contains', today)
+      );
+      const classSnap = await getDocs(todayClassesQ);
+      setTodayClasses(classSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      // 2. Fetch Recent Submissions (Last 5)
+      const submissionsQ = query(
+        collection(db, 'submissions'),
+        where('teacherId', '==', user.uid),
+        orderBy('submittedAt', 'desc'),
+        limit(5)
+      );
+      const subSnap = await getDocs(submissionsQ);
+      setRecentSubmissions(subSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (error) {
+      console.error("Error fetching activity:", error);
+    }
+  };
+
   const markAsRead = async (id) => {
     try {
       await updateDoc(doc(db, 'notifications', id), { status: 'read' });
@@ -113,12 +144,12 @@ export default function TeacherDashboard() {
     { title: 'My Classes', value: classCount, icon: '📚', color: 'from-blue-500 to-cyan-500', link: '/teacher/classes' },
     { title: 'Assignments', value: assignmentCount, icon: '📝', color: 'from-purple-500 to-pink-500', link: '/teacher/assignments' },
     { title: 'Students', value: studentCount, icon: '👨‍🎓', color: 'from-green-500 to-emerald-500', link: '/teacher/students' },
-    { title: "Today's Classes", value: classCount, icon: '📅', color: 'from-orange-500 to-red-500', link: '/teacher/schedule' },
+    { title: "Today's Classes", value: todayClasses.length.toString(), icon: '📅', color: 'from-orange-500 to-red-500', link: '/teacher/schedule' },
   ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-      {/* Navbar */}
+      {/* Navbar (Kept as is) */}
       <nav className="bg-white shadow-lg border-b-4 border-blue-600 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -129,7 +160,6 @@ export default function TeacherDashboard() {
             </div>
             
             <div className="flex items-center gap-4">
-              {/* Notification Button & Popup */}
               <div className="relative" ref={notificationRef}>
                 <button 
                   onClick={() => setShowNotifs(!showNotifs)}
@@ -143,7 +173,6 @@ export default function TeacherDashboard() {
                   )}
                 </button>
 
-                {/* Popup Menu */}
                 {showNotifs && (
                   <div className="absolute right-0 mt-3 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
                     <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
@@ -175,7 +204,6 @@ export default function TeacherDashboard() {
                 )}
               </div>
 
-              {/* User Profile Info */}
               <div className="flex items-center gap-3 px-4 py-2 bg-gray-100 rounded-lg">
                 <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
                   {userData?.name?.charAt(0) || 'T'}
@@ -219,7 +247,7 @@ export default function TeacherDashboard() {
           ))}
         </div>
 
-        {/* Quick Actions */}
+        {/* Quick Actions (Same as your code) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <Link href="/teacher/attendance" className="bg-white rounded-xl shadow-lg p-6 hover:shadow-2xl transition-all hover:scale-105">
             <div className="flex items-center gap-4">
@@ -230,7 +258,6 @@ export default function TeacherDashboard() {
               </div>
             </div>
           </Link>
-
           <Link href="/teacher/assignments" className="bg-white rounded-xl shadow-lg p-6 hover:shadow-2xl transition-all hover:scale-105">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-3xl">📝</div>
@@ -240,7 +267,6 @@ export default function TeacherDashboard() {
               </div>
             </div>
           </Link>
-
           <Link href="/teacher/marks" className="bg-white rounded-xl shadow-lg p-6 hover:shadow-2xl transition-all hover:scale-105">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center text-white text-3xl">📊</div>
@@ -252,16 +278,55 @@ export default function TeacherDashboard() {
           </Link>
         </div>
 
-        {/* Recent Activity Panels */}
+        {/* Recent Activity Panels - UPDATED WITH LOGIC */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl shadow-lg p-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">📅 Upcoming Classes</h2>
-            <div className="text-gray-600"><p>No classes scheduled for today</p></div>
+            <div className="space-y-4">
+              {todayClasses.length === 0 ? (
+                <p className="text-gray-500 italic text-center py-4">No classes scheduled for today</p>
+              ) : (
+                todayClasses.map((cls) => (
+                  <div key={cls.id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <div className="flex items-center gap-3">
+                      <BookOpen className="w-5 h-5 text-blue-600" />
+                      <div>
+                        <p className="font-bold text-gray-800">{cls.className}</p>
+                        <p className="text-xs text-gray-500">{cls.subject}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 text-blue-700 font-medium text-sm">
+                      <Clock className="w-4 h-4" />
+                      {cls.time}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
           
           <div className="bg-white rounded-xl shadow-lg p-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">📬 Recent Submissions</h2>
-            <div className="text-gray-600"><p>No recent submissions</p></div>
+            <div className="space-y-4">
+              {recentSubmissions.length === 0 ? (
+                <p className="text-gray-500 italic text-center py-4">No recent submissions</p>
+              ) : (
+                recentSubmissions.map((sub) => (
+                  <div key={sub.id} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-100">
+                    <div className="flex items-center gap-3">
+                      <User className="w-5 h-5 text-purple-600" />
+                      <div>
+                        <p className="font-bold text-gray-800">{sub.studentName}</p>
+                        <p className="text-xs text-gray-500">{sub.assignmentTitle}</p>
+                      </div>
+                    </div>
+                    <Link href={`/teacher/marks/${sub.id}`} className="text-xs bg-purple-600 text-white px-3 py-1 rounded-full hover:bg-purple-700 transition-colors">
+                      Grade
+                    </Link>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -1,13 +1,65 @@
 'use client';
+import { useState, useEffect, useRef } from 'react'; // Added useRef
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import Card, { CardGrid } from '@/components/ui/Card';
-import { BookOpen, Calendar, FileText, Award } from 'lucide-react';
+import { BookOpen, Calendar, FileText, Award, Bell, X } from 'lucide-react'; // Added Bell, X
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useFirestore } from '@/lib/hooks/useFirestore';
+import { db } from '@/lib/firebase'; // Added for notification logic
+import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
 
 export default function StudentDashboard() {
   const { user, userData } = useAuth();
   
+  // --- Notification Logic from teacher/page.js ---
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const notificationRef = useRef(null);
+
+  // Close popup when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotifs(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Real-time Notification Listener (Syncing with Firebase)
+  useEffect(() => {
+    if (user?.uid) {
+      const q = query(
+        collection(db, 'notifications'),
+        where('recipientId', '==', user.uid),
+        orderBy('createdAt', 'desc'),
+        limit(5)
+      );
+
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const notifs = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setNotifications(notifs);
+      });
+
+      return () => unsubscribe();
+    }
+  }, [user]);
+
+  const markAsRead = async (id) => {
+    try {
+      await updateDoc(doc(db, 'notifications', id), { status: 'read' });
+    } catch (err) {
+      console.error("Error marking as read:", err);
+    }
+  };
+
+  const unreadCount = notifications.filter(n => n.status === 'unread').length;
+  // --- End Notification Logic ---
+
   // Existing Assignments Fetch
   const { documents: assignments } = useFirestore('assignments', [
     { field: 'classId', operator: '==', value: userData?.classId || '' }
@@ -18,7 +70,7 @@ export default function StudentDashboard() {
     { field: 'studentId', operator: '==', value: user?.uid || '' }
   ]);
 
-  // Backend Integration: Fetch Announcements
+  // Backend Integration: Fetch Announcements (Main Panel)
   const { documents: announcements } = useFirestore('notifications', [
     { field: 'recipientId', operator: 'in', value: ['all', user?.uid || ''] }
   ]);
@@ -43,7 +95,7 @@ export default function StudentDashboard() {
     },
     {
       title: 'Attendance',
-      value: `${attendancePercentage}%`, // Integrated backend value
+      value: `${attendancePercentage}%`,
       icon: Calendar,
       color: 'from-green-500 to-emerald-500',
     },
@@ -58,9 +110,13 @@ export default function StudentDashboard() {
   return (
     <DashboardLayout requiredRole="student">
       <div>
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome, {userData?.name}!</h1>
-        <p className="text-gray-600 mb-8">Here's your academic overview</p>
-        
+        {/* Header with Integrated Notification Icon */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome, {userData?.name}!</h1>
+            <p className="text-gray-600">Here's your academic overview</p>
+          </div>
+        </div>
         <CardGrid cols={4}>
           {stats.map((stat, index) => {
             const Icon = stat.icon;
@@ -95,7 +151,6 @@ export default function StudentDashboard() {
           </Card>
           
           <Card title="Recent Announcements">
-            {/* Backend Integration: Showing dynamic announcements */}
             {announcements.length === 0 ? (
               <p className="text-gray-600">No recent announcements</p>
             ) : (
