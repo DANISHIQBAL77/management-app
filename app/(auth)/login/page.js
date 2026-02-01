@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { signIn, getUserData } from '@/lib/auth';
+import { ArrowLeft } from 'lucide-react'; // Added for the icon
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,10 +28,8 @@ export default function LoginPage() {
       return;
     }
     
-    // Get user role from Firestore
     const { data: userData } = await getUserData(user.uid);
     
-    // Redirect based on role
     if (userData?.role === 'admin') {
       router.push('/admin');
     } else if (userData?.role === 'teacher') {
@@ -45,7 +44,17 @@ export default function LoginPage() {
   };
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 flex items-center justify-center p-4 relative">
+      
+      {/* Back to Home Button */}
+      <button 
+        onClick={() => router.push('/')}
+        className="absolute top-6 left-6 flex items-center gap-2 text-white/80 hover:text-white transition-colors font-medium"
+      >
+        <ArrowLeft className="w-5 h-5" />
+        Back to Home
+      </button>
+
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-8 text-white text-center">
           <h1 className="text-4xl font-bold mb-2">🎓 Welcome Back</h1>
