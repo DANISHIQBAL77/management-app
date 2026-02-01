@@ -11,9 +11,9 @@ import Alert from '@/components/ui/Alert';
 import Badge from '@/components/ui/Badge';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { createDocument, deleteDocument } from '@/lib/firestore';
-import { collection, query, where, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Megaphone, Plus, Trash2, Calendar } from 'lucide-react';
+import { Plus, Trash2, Megaphone } from 'lucide-react';
 import { formatDate } from '@/lib/utils/formatters';
 
 export default function AnnouncementsPage() {
@@ -24,233 +24,86 @@ export default function AnnouncementsPage() {
   const [classes, setClasses] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  const [formData, setFormData] = useState({
-    title: '',
-    content: '',
-    classId: '',
-    priority: 'normal', // high, normal, low
-  });
+  const [formData, setFormData] = useState({ title: '', content: '', classId: '', priority: 'normal' });
 
-  // Auth Protection
   useEffect(() => {
-    if (!authLoading && !user) router.push('/login');
-    if (!authLoading && userData && userData.role !== 'teacher') {
-      router.push(`/${userData.role}`);
+    if (!authLoading) {
+      if (!user) {
+        router.push('/login');
+      } else if (userData?.role !== 'teacher') {
+        router.push(`/${userData?.role || 'login'}`);
+      } else {
+        fetchInitialData();
+      }
     }
-  }, [user, userData, authLoading, router]);
+  }, [user, userData, authLoading]);
 
-  // Fetch Data
-  useEffect(() => {
-    if (user && userData?.role === 'teacher') {
-      fetchData();
-    }
-  }, [user, userData]);
-
-  const fetchData = async () => {
+  const fetchInitialData = async () => {
     try {
-      setLoading(true);
-      
-      // Fetch Teacher's Classes
       const qClasses = query(collection(db, 'classes'), where('teacherId', '==', user.uid));
       const classSnap = await getDocs(qClasses);
-      const classesData = classSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setClasses(classesData);
+      setClasses(classSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-      // Fetch Announcements (Real-time)
-      const qAnnounce = query(
-        collection(db, 'announcements'), 
-        where('teacherId', '==', user.uid)
-      );
-      
-      const unsubscribe = onSnapshot(qAnnounce, (snapshot) => {
-        const announceData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // Sort by date manually if Firestore index isn't ready
-        announceData.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        setAnnouncements(announceData);
+      const qAnnounce = query(collection(db, 'announcements'), where('teacherId', '==', user.uid));
+      onSnapshot(qAnnounce, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        setAnnouncements(data);
+        setDataLoading(false);
       });
-
-      setLoading(false);
-      return () => unsubscribe();
     } catch (error) {
-      console.error("Error fetching announcements:", error);
-      setLoading(false);
+      console.error(error);
+      setDataLoading(false);
     }
-  };
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.classId) {
-      setAlert({ type: 'error', message: 'Please select a class.' });
-      return;
-    }
-
-    setSubmitting(true);
-    
-    const announcementData = {
-      ...formData,
-      teacherId: user.uid,
-      teacherName: userData.name || 'Teacher',
-      createdAt: new Date().toISOString(),
-    };
-    
-    const result = await createDocument('announcements', announcementData);
-    
-    if (result.error) {
-      setAlert({ type: 'error', message: result.error });
-    } else {
-      setAlert({ type: 'success', message: 'Announcement posted successfully!' });
-      handleCloseModal();
-    }
-    setSubmitting(false);
+    if (!formData.classId) return setAlert({ type: 'error', message: 'Select a class.' });
+    const result = await createDocument('announcements', { ...formData, teacherId: user.uid, createdAt: new Date().toISOString() });
+    if (result.error) setAlert({ type: 'error', message: result.error });
+    else { setAlert({ type: 'success', message: 'Posted!' }); setIsModalOpen(false); setFormData({ title: '', content: '', classId: '', priority: 'normal' }); }
   };
 
-  const handleDelete = async (id) => {
-    if (confirm('Delete this announcement?')) {
-      const result = await deleteDocument('announcements', id);
-      if (result.error) setAlert({ type: 'error', message: result.error });
-      else setAlert({ type: 'success', message: 'Announcement removed.' });
-    }
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setFormData({ title: '', content: '', classId: '', priority: 'normal' });
-  };
-
-  const columns = [
-    { 
-      header: 'Title', 
-      key: 'title',
-      render: (item) => (
-        <div className="flex flex-col">
-          <span className="font-bold text-gray-900">{item.title}</span>
-          <span className="text-xs text-gray-500 truncate max-w-[200px]">{item.content}</span>
-        </div>
-      )
-    },
-    { 
-      header: 'Class', 
-      key: 'classId',
-      render: (item) => {
-        const classData = classes.find(c => c.id === item.classId);
-        return <Badge variant="primary">{classData?.name || 'All Classes'}</Badge>;
-      }
-    },
-    { 
-      header: 'Priority', 
-      key: 'priority',
-      render: (item) => (
-        <Badge className={
-          item.priority === 'high' ? 'bg-red-100 text-red-700' : 
-          item.priority === 'low' ? 'bg-gray-100 text-gray-700' : 
-          'bg-blue-100 text-blue-700'
-        }>
-          {item.priority.toUpperCase()}
-        </Badge>
-      )
-    },
-    { 
-      header: 'Date', 
-      key: 'createdAt', 
-      render: (item) => (
-        <div className="flex items-center text-sm text-gray-600">
-          <Calendar className="w-4 h-4 mr-1" />
-          {formatDate(item.createdAt)}
-        </div>
-      )
-    },
-    {
-      header: 'Actions',
-      key: 'actions',
-      render: (item) => (
-        <button onClick={() => handleDelete(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg">
-          <Trash2 className="w-4 h-4" />
-        </button>
-      ),
-    },
-  ];
-
-  if (authLoading || loading) return <div className="p-10 text-center">Loading Announcements...</div>;
+  if (authLoading || dataLoading) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-white z-50">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <DashboardLayout requiredRole="teacher">
-      <div className="p-6">
+      <div className="p-6"> 
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-blue-600 rounded-lg text-white">
-              <Megaphone className="w-6 h-6" />
-            </div>
-            <h1 className="text-4xl font-bold text-gray-900">Announcements</h1>
+             <div className="p-3 bg-blue-600 rounded-lg text-white"><Megaphone className="w-6 h-6" /></div>
+             <h1 className="text-4xl font-bold text-gray-900">Announcements</h1>
           </div>
-          <Button onClick={() => setIsModalOpen(true)}>
-            <Plus className="w-5 h-5 mr-2" /> New Announcement
-          </Button>
+          <Button onClick={() => setIsModalOpen(true)}><Plus className="w-5 h-5 mr-2" /> New Announcement</Button>
         </div>
-        
         {alert && <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} className="mb-6" />}
-        
         <Card>
-          <Table columns={columns} data={announcements} />
+          <Table columns={[
+            { header: 'Title', key: 'title' },
+            { header: 'Class', key: 'classId', render: (i) => <Badge variant="primary">{classes.find(c => c.id === i.classId)?.name || 'N/A'}</Badge> },
+            { header: 'Priority', key: 'priority', render: (i) => <Badge className={i.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}>{i.priority.toUpperCase()}</Badge> },
+            { header: 'Date', key: 'createdAt', render: (i) => formatDate(i.createdAt) },
+            { header: 'Actions', key: 'id', render: (i) => <button onClick={() => deleteDocument('announcements', i.id)} className="p-2 text-red-600"><Trash2 className="w-4 h-4" /></button> }
+          ]} data={announcements} />
         </Card>
-        
-        <Modal isOpen={isModalOpen} onClose={handleCloseModal} title="Post New Announcement" size="lg">
+        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New Announcement">
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input 
-              label="Announcement Title" 
-              name="title" 
-              value={formData.title} 
-              onChange={handleChange} 
-              required 
-              placeholder="e.g., Class Cancelled or Exam Update"
-            />
-            
-            <Textarea 
-              label="Content" 
-              name="content" 
-              value={formData.content} 
-              onChange={handleChange} 
-              required 
-              rows={4} 
-              placeholder="Write your message here..."
-            />
-            
+            <Input label="Title" name="title" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} required />
+            <Textarea label="Content" name="content" value={formData.content} onChange={(e) => setFormData({...formData, content: e.target.value})} required />
             <div className="grid grid-cols-2 gap-4">
-              <Select
-                label="Target Class"
-                name="classId"
-                value={formData.classId}
-                onChange={handleChange}
-                required
-                options={[
-                  ...classes.map(c => ({ value: c.id, label: c.name }))
-                ]}
-              />
-              <Select
-                label="Priority Level"
-                name="priority"
-                value={formData.priority}
-                onChange={handleChange}
-                options={[
-                  { value: 'normal', label: 'Normal' },
-                  { value: 'high', label: 'High (Urgent)' },
-                  { value: 'low', label: 'Low' },
-                ]}
-              />
+              <Select label="Class" name="classId" value={formData.classId} onChange={(e) => setFormData({...formData, classId: e.target.value})} required options={[ ...classes.map(c => ({ value: c.id, label: c.name }))]} />
+              <Select label="Priority" name="priority" value={formData.priority} onChange={(e) => setFormData({...formData, priority: e.target.value})} options={[{ value: 'normal', label: 'Normal' }, { value: 'high', label: 'High' }]} />
             </div>
-            
-            <div className="flex gap-4 mt-6">
-              <Button type="submit" fullWidth disabled={submitting}>
-                {submitting ? 'Posting...' : 'Post Announcement'}
-              </Button>
-              <Button type="button" variant="outline" onClick={handleCloseModal} fullWidth>Cancel</Button>
-            </div>
+            <Button type="submit" fullWidth>Post Announcement</Button>
           </form>
         </Modal>
       </div>
