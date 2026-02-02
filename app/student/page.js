@@ -1,22 +1,21 @@
 'use client';
-import { useState, useEffect, useRef } from 'react'; // Added useRef
+import { useState, useEffect, useRef } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import Card, { CardGrid } from '@/components/ui/Card';
-import { BookOpen, Calendar, FileText, Award, Bell, X } from 'lucide-react'; // Added Bell, X
+import { BookOpen, Calendar, FileText, Award, Bell, X } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useFirestore } from '@/lib/hooks/useFirestore';
-import { db } from '@/lib/firebase'; // Added for notification logic
+import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
 
 export default function StudentDashboard() {
   const { user, userData } = useAuth();
   
-  // --- Notification Logic from teacher/page.js ---
+  // --- Notification Logic (Personal Notifications) ---
   const [notifications, setNotifications] = useState([]);
   const [showNotifs, setShowNotifs] = useState(false);
   const notificationRef = useRef(null);
 
-  // Close popup when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
@@ -27,55 +26,36 @@ export default function StudentDashboard() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Real-time Notification Listener (Syncing with Firebase)
   useEffect(() => {
     if (user?.uid) {
       const q = query(
-        collection(db, 'notifications'),
+        collection(db, 'notifications'), // Personal alerts (leave as is)
         where('recipientId', '==', user.uid),
         orderBy('createdAt', 'desc'),
         limit(5)
       );
-
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        const notifs = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setNotifications(notifs);
+        setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       });
-
       return () => unsubscribe();
     }
   }, [user]);
 
-  const markAsRead = async (id) => {
-    try {
-      await updateDoc(doc(db, 'notifications', id), { status: 'read' });
-    } catch (err) {
-      console.error("Error marking as read:", err);
-    }
-  };
-
-  const unreadCount = notifications.filter(n => n.status === 'unread').length;
-  // --- End Notification Logic ---
-
-  // Existing Assignments Fetch
+  // --- FIXED ASSIGNMENTS FETCH ---
   const { documents: assignments } = useFirestore('assignments', [
     { field: 'classId', operator: '==', value: userData?.classId || '' }
   ]);
 
-  // Backend Integration: Fetch Attendance
+  // --- FIXED ANNOUNCEMENTS FETCH ---
+  // Changed collection name from 'notifications' to 'announcements' to match teacher page
+  const { documents: announcements } = useFirestore('announcements', [
+    { field: 'classId', operator: '==', value: userData?.classId || '' }
+  ]);
+
   const { documents: attendanceData } = useFirestore('attendance', [
     { field: 'studentId', operator: '==', value: user?.uid || '' }
   ]);
 
-  // Backend Integration: Fetch Announcements (Main Panel)
-  const { documents: announcements } = useFirestore('notifications', [
-    { field: 'recipientId', operator: 'in', value: ['all', user?.uid || ''] }
-  ]);
-
-  // Calculation for Attendance Percentage
   const totalDays = attendanceData.length;
   const presentDays = attendanceData.filter(doc => doc.status === 'present').length;
   const attendancePercentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
@@ -110,13 +90,13 @@ export default function StudentDashboard() {
   return (
     <DashboardLayout requiredRole="student">
       <div>
-        {/* Header with Integrated Notification Icon */}
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome, {userData?.name}!</h1>
             <p className="text-gray-600">Here's your academic overview</p>
           </div>
         </div>
+
         <CardGrid cols={4}>
           {stats.map((stat, index) => {
             const Icon = stat.icon;
@@ -143,7 +123,7 @@ export default function StudentDashboard() {
                 {assignments.slice(0, 5).map(assignment => (
                   <div key={assignment.id} className="p-3 bg-blue-50 rounded-lg">
                     <p className="font-semibold text-gray-900">{assignment.title}</p>
-                    <p className="text-sm text-gray-600">Due: {assignment.dueDate}</p>
+                    <p className="text-sm text-gray-600">Due: {assignment.dueDate || 'No Date'}</p>
                   </div>
                 ))}
               </div>
@@ -155,10 +135,14 @@ export default function StudentDashboard() {
               <p className="text-gray-600">No recent announcements</p>
             ) : (
               <div className="space-y-3">
-                {announcements.slice(0, 5).map(announcement => (
+                {/* Sorted manually for string-based createdAt */}
+                {[...announcements]
+                  .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                  .slice(0, 5)
+                  .map(announcement => (
                   <div key={announcement.id} className="p-3 border-l-4 border-blue-500 bg-gray-50 rounded-r-lg">
                     <p className="font-semibold text-gray-900">{announcement.title}</p>
-                    <p className="text-sm text-gray-600">{announcement.message}</p>
+                    <p className="text-sm text-gray-600">{announcement.content}</p>
                   </div>
                 ))}
               </div>
