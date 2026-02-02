@@ -44,8 +44,8 @@ export default function TeacherDashboard() {
         router.push(`/${userData.role}`);
       } else {
         fetchDashboardData();
-        fetchRecentActivity(); // New fetch call
         
+        // Real-time Notifications Listener
         const q = query(
           collection(db, 'notifications'),
           where('recipientId', '==', user.uid),
@@ -54,11 +54,7 @@ export default function TeacherDashboard() {
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-          const notifs = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          setNotifications(notifs);
+          setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
 
         return () => unsubscribe();
@@ -67,58 +63,70 @@ export default function TeacherDashboard() {
   }, [user, userData, authLoading, router]);
 
   const fetchDashboardData = async () => {
+    if (!user?.uid) return;
     try {
+      setDataLoading(true);
+
+      // 1. Fetch Teacher's Classes
       const classesQ = query(collection(db, 'classes'), where('teacherId', '==', user.uid));
       const classesSnap = await getDocs(classesQ);
-      const numClasses = classesSnap.docs.length;
-      setClassCount(numClasses.toString());
+      const classList = classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setClassCount(classList.length.toString());
 
+      // 2. Fetch Teacher's Assignments
       const assignmentsQ = query(collection(db, 'assignments'), where('teacherId', '==', user.uid));
       const assignmentsSnap = await getDocs(assignmentsQ);
-      setAssignmentCount(assignmentsSnap.docs.length.toString());
+      const assignmentList = assignmentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setAssignmentCount(assignmentList.length.toString());
 
-      if (numClasses > 0) {
-        const classIds = classesSnap.docs.map(doc => doc.id);
+      // 3. Fetch Student Count
+      if (classList.length > 0) {
+        const classIds = classList.map(doc => doc.id);
         const studentsQ = query(
           collection(db, 'users'), 
           where('role', '==', 'student'), 
-          where('classId', 'in', classIds)
+          where('classId', 'in', classIds.slice(0, 10))
         );
         const studentsSnap = await getDocs(studentsQ);
         setStudentCount(studentsSnap.docs.length.toString());
       }
+
+      // 4. Handle Today's Classes
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const today = days[new Date().getDay()];
+      const classesForToday = classList.filter(cls => 
+        cls.scheduleDays?.includes(today) || cls.days?.includes(today) || !cls.scheduleDays // Fallback: show all if no schedule set
+      );
+      setTodayClasses(classesForToday);
+
+      // 5. Handle Recent Submissions
+      if (assignmentList.length > 0) {
+        const assignmentIds = assignmentList.map(a => a.id).slice(0, 10);
+        
+        // We query submissions linked to the teacher's assignments
+        const submissionsQ = query(
+          collection(db, 'submissions'),
+          where('assignmentId', 'in', assignmentIds),
+          orderBy('submittedAt', 'desc'),
+          limit(5)
+        );
+        
+        const subSnap = await getDocs(submissionsQ);
+        setRecentSubmissions(subSnap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            // Cross-reference title from our local assignment list
+            assignmentTitle: assignmentList.find(a => a.id === data.assignmentId)?.title || 'Assignment'
+          };
+        }));
+      }
+
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
     } finally {
       setDataLoading(false);
-    }
-  };
-
-  const fetchRecentActivity = async () => {
-    try {
-      // 1. Fetch Today's Classes
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const today = days[new Date().getDay()];
-      
-      const todayClassesQ = query(
-        collection(db, 'classes'),
-        where('teacherId', '==', user.uid),
-        where('scheduleDays', 'array-contains', today)
-      );
-      const classSnap = await getDocs(todayClassesQ);
-      setTodayClasses(classSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-      // 2. Fetch Recent Submissions (Last 5)
-      const submissionsQ = query(
-        collection(db, 'submissions'),
-        where('teacherId', '==', user.uid),
-        orderBy('submittedAt', 'desc'),
-        limit(5)
-      );
-      const subSnap = await getDocs(submissionsQ);
-      setRecentSubmissions(subSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    } catch (error) {
-      console.error("Error fetching activity:", error);
     }
   };
 
@@ -141,15 +149,14 @@ export default function TeacherDashboard() {
   }
 
   const stats = [
-    { title: 'My Classes', value: classCount, icon: '📚', color: 'from-blue-500 to-cyan-500', link: '/teacher/classes' },
-    { title: 'Assignments', value: assignmentCount, icon: '📝', color: 'from-purple-500 to-pink-500', link: '/teacher/assignments' },
-    { title: 'Students', value: studentCount, icon: '👨‍🎓', color: 'from-green-500 to-emerald-500', link: '/teacher/students' },
-    { title: "Today's Classes", value: todayClasses.length.toString(), icon: '📅', color: 'from-orange-500 to-red-500', link: '/teacher/schedule' },
+    { title: 'My Classes', value: classCount, icon: '📚', color: 'from-blue-500 to-cyan-500' },
+    { title: 'Assignments', value: assignmentCount, icon: '📝', color: 'from-purple-500 to-pink-500' },
+    { title: 'Students', value: studentCount, icon: '👨‍🎓', color: 'from-green-500 to-emerald-500' },
+    { title: "Today's Classes", value: todayClasses.length.toString(), icon: '📅', color: 'from-orange-500 to-red-500' },
   ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-      {/* Navbar (Kept as is) */}
       <nav className="bg-white shadow-lg border-b-4 border-blue-600 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -161,10 +168,7 @@ export default function TeacherDashboard() {
             
             <div className="flex items-center gap-4">
               <div className="relative" ref={notificationRef}>
-                <button 
-                  onClick={() => setShowNotifs(!showNotifs)}
-                  className="relative p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-all active:scale-95"
-                >
+                <button onClick={() => setShowNotifs(!showNotifs)} className="relative p-2 bg-gray-100 rounded-full">
                   <Bell className="w-6 h-6 text-gray-600" />
                   {unreadCount > 0 && (
                     <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white font-bold animate-bounce">
@@ -187,14 +191,9 @@ export default function TeacherDashboard() {
                           <div 
                             key={notif.id} 
                             onClick={() => markAsRead(notif.id)}
-                            className={`p-4 border-b cursor-pointer transition-colors ${notif.status === 'unread' ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}`}
+                            className={`p-4 border-b cursor-pointer transition-colors ${notif.status === 'unread' ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                           >
-                            <div className="flex justify-between gap-2">
-                              <p className={`text-sm ${notif.status === 'unread' ? 'font-bold text-gray-900' : 'text-gray-600'}`}>
-                                {notif.title || 'New Update'}
-                              </p>
-                              {notif.status === 'unread' && <div className="w-2 h-2 bg-blue-600 rounded-full mt-1 shrink-0" />}
-                            </div>
+                            <p className="text-sm font-bold text-gray-900">{notif.title || 'New Update'}</p>
                             <p className="text-xs text-gray-500 mt-1">{notif.message}</p>
                           </div>
                         ))
@@ -210,14 +209,10 @@ export default function TeacherDashboard() {
                 </div>
                 <div className="text-sm hidden sm:block">
                   <div className="font-semibold text-gray-900">{userData?.name || 'Teacher'}</div>
-                  <div className="text-gray-500 text-xs capitalize">{userData?.role || 'teacher'}</div>
                 </div>
               </div>
               
-              <button
-                onClick={() => router.push('/login')}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-              >
+              <button onClick={() => router.push('/login')} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
                 Logout
               </button>
             </div>
@@ -225,14 +220,12 @@ export default function TeacherDashboard() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <div className="max-w-7xl mx-auto p-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome, {userData?.name}! 👋</h1>
           <p className="text-gray-600">Here's your teaching overview</p>
         </div>
         
-        {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {stats.map((stat, index) => (
             <div key={index} className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-shadow duration-300">
@@ -247,8 +240,7 @@ export default function TeacherDashboard() {
           ))}
         </div>
 
-        {/* Quick Actions (Same as your code) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Link href="/teacher/attendance" className="bg-white rounded-xl shadow-lg p-6 hover:shadow-2xl transition-all hover:scale-105">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-3xl">✓</div>
@@ -278,7 +270,6 @@ export default function TeacherDashboard() {
           </Link>
         </div>
 
-        {/* Recent Activity Panels - UPDATED WITH LOGIC */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl shadow-lg p-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">📅 Upcoming Classes</h2>
@@ -291,13 +282,13 @@ export default function TeacherDashboard() {
                     <div className="flex items-center gap-3">
                       <BookOpen className="w-5 h-5 text-blue-600" />
                       <div>
-                        <p className="font-bold text-gray-800">{cls.className}</p>
+                        <p className="font-bold text-gray-800">{cls.name || cls.className}</p>
                         <p className="text-xs text-gray-500">{cls.subject}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 text-blue-700 font-medium text-sm">
                       <Clock className="w-4 h-4" />
-                      {cls.time}
+                      {cls.time || 'N/A'}
                     </div>
                   </div>
                 ))
@@ -320,7 +311,7 @@ export default function TeacherDashboard() {
                         <p className="text-xs text-gray-500">{sub.assignmentTitle}</p>
                       </div>
                     </div>
-                    <Link href={`/teacher/marks/${sub.id}`} className="text-xs bg-purple-600 text-white px-3 py-1 rounded-full hover:bg-purple-700 transition-colors">
+                    <Link href={`/teacher/marks`} className="text-xs bg-purple-600 text-white px-3 py-1 rounded-full hover:bg-purple-700 transition-colors">
                       Grade
                     </Link>
                   </div>

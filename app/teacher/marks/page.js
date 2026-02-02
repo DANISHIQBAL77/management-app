@@ -24,7 +24,7 @@ export default function MarksPage() {
   const [submissions, setSubmissions] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedAssignment, setSelectedAssignment] = useState('');
-  const [dataLoading, setDataLoading] = useState(true); // Renamed for clarity
+  const [dataLoading, setDataLoading] = useState(true); 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentSubmission, setCurrentSubmission] = useState(null);
   const [alert, setAlert] = useState(null);
@@ -34,7 +34,15 @@ export default function MarksPage() {
     remarks: '',
   });
 
-  // 1. Auth & Initial Data Fetching
+  const getFileType = (fileName) => {
+    if (!fileName) return null;
+    const extension = fileName.split('.').pop().toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) return 'image';
+    if (['mp4', 'webm', 'ogg'].includes(extension)) return 'video';
+    if (['pdf'].includes(extension)) return 'pdf';
+    return 'document';
+  };
+
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
@@ -47,7 +55,6 @@ export default function MarksPage() {
     }
   }, [user, userData, authLoading]);
 
-  // 2. Dependancy Fetches
   useEffect(() => {
     if (selectedClass) {
       fetchClassStudents();
@@ -69,7 +76,7 @@ export default function MarksPage() {
     } catch (error) {
       console.error('Error:', error);
     } finally {
-      setDataLoading(false); // Stop the spinner once classes are loaded
+      setDataLoading(false);
     }
   };
 
@@ -91,22 +98,12 @@ export default function MarksPage() {
     setSubmissions(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
 
-  const calculateGrade = (marks, totalMarks) => {
-    const percentage = (marks / totalMarks) * 100;
-    if (percentage >= 90) return 'A+';
-    if (percentage >= 80) return 'A';
-    if (percentage >= 70) return 'B';
-    if (percentage >= 60) return 'C';
-    if (percentage >= 50) return 'D';
-    return 'F';
-  };
-
   const handleGradeSubmission = (submission, student) => {
     setCurrentSubmission({ ...submission, studentName: student.name });
     const assignment = assignments.find(a => a.id === selectedAssignment);
     setFormData({
       marks: submission.marks || '',
-      totalMarks: assignment?.totalMarks || '',
+      totalMarks: submission.totalMarks || assignment?.totalMarks || '',
       remarks: submission.remarks || '',
     });
     setIsModalOpen(true);
@@ -115,35 +112,26 @@ export default function MarksPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const grade = calculateGrade(Number(formData.marks), Number(formData.totalMarks));
       const submissionRef = doc(db, 'submissions', currentSubmission.id);
       await updateDoc(submissionRef, {
         marks: Number(formData.marks),
         totalMarks: Number(formData.totalMarks),
         remarks: formData.remarks,
-        grade: grade,
-        gradedAt: new Date().toISOString(),
         status: 'graded',
+        gradedAt: new Date().toISOString(),
       });
-      setAlert({ type: 'success', message: 'Marks updated!' });
+      setAlert({ type: 'success', message: 'Grade updated!' });
       setIsModalOpen(false);
       fetchSubmissions();
-    } catch (error) { setAlert({ type: 'error', message: error.message }); }
+    } catch (error) {
+      setAlert({ type: 'error', message: error.message });
+    }
   };
-
-  // SINGLE CIRCULAR SPINNER LOGIC
-  if (authLoading || dataLoading) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-white z-50">
-        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
 
   return (
     <DashboardLayout requiredRole="teacher">
       <div className="p-6">
-        <h1 className="text-4xl font-bold text-gray-900 mb-8">Grading & Marks</h1>
+        <h1 className="text-4xl font-bold text-gray-900 mb-8">Grading</h1>
 
         {alert && <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} className="mb-6" />}
 
@@ -152,86 +140,115 @@ export default function MarksPage() {
             <Select
               label="Select Class"
               value={selectedClass}
-              onChange={(e) => { setSelectedClass(e.target.value); setSelectedAssignment(''); }}
-              options={[
-                ...classes.map(c => ({ value: c.id, label: c.name }))
-              ]}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              options={classes.map(c => ({ value: c.id, label: c.name }))}
             />
             <Select
               label="Select Assignment"
               value={selectedAssignment}
               onChange={(e) => setSelectedAssignment(e.target.value)}
               disabled={!selectedClass}
-              options={[
-                ...assignments.map(a => ({ value: a.id, label: `${a.title} (Max: ${a.totalMarks})` }))
-              ]}
+              options={assignments.map(a => ({ value: a.id, label: a.title }))}
             />
           </div>
         </Card>
 
-        {selectedClass && selectedAssignment ? (
+        {selectedAssignment && (
           <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="p-4 font-bold text-gray-700">Student Name</th>
-                    <th className="p-4 font-bold text-gray-700">Status</th>
-                    <th className="p-4 font-bold text-gray-700">Marks</th>
-                    <th className="p-4 font-bold text-gray-700">Grade</th>
-                    <th className="p-4 font-bold text-gray-700">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((student) => {
-                    const submission = submissions.find(s => s.studentId === student.id);
-                    return (
-                      <tr key={student.id} className="border-b hover:bg-gray-50 transition-colors">
-                        <td className="p-4 font-medium">{student.name}</td>
-                        <td className="p-4">
-                          {!submission ? <Badge variant="outline">Not Submitted</Badge> : 
-                           submission.status === 'graded' ? <Badge variant="success">Graded</Badge> : 
-                           <Badge variant="primary">Submitted</Badge>}
-                        </td>
-                        <td className="p-4">{submission?.marks ? `${submission.marks}/${submission.totalMarks}` : '-'}</td>
-                        <td className="p-4">{submission?.grade ? <Badge>{submission.grade}</Badge> : '-'}</td>
-                        <td className="p-4">
-                          {submission && (
-                            <Button size="sm" onClick={() => handleGradeSubmission(submission, student)}>
-                              {submission.marks ? 'Edit Marks' : 'Grade'}
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b bg-gray-50 text-sm">
+                  <th className="p-4 font-bold">Student</th>
+                  <th className="p-4 font-bold">File</th>
+                  <th className="p-4 font-bold text-center">Marks</th>
+                  <th className="p-4 font-bold">Remarks</th> {/* NEW COLUMN */}
+                  <th className="p-4 font-bold text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((student) => {
+                  const submission = submissions.find(s => s.studentId === student.id);
+                  return (
+                    <tr key={student.id} className="border-b hover:bg-gray-50 transition-colors">
+                      <td className="p-4 font-medium">{student.name}</td>
+                      <td className="p-4">
+                        {submission?.fileName ? (
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-blue-600 truncate max-w-[120px]">
+                              {submission.fileName}
+                            </span>
+                          </div>
+                        ) : <span className="text-gray-300">No file</span>}
+                      </td>
+                      <td className="p-4 text-center">
+                         {submission?.marks !== undefined ? (
+                           <Badge variant="success">{submission.marks}/{submission.totalMarks}</Badge>
+                         ) : "-"}
+                      </td>
+                      {/* SHOW REMARKS IN ROW */}
+                      <td className="p-4">
+                        <span className="text-sm text-gray-600 italic truncate max-w-[150px] block">
+                          {submission?.remarks || <span className="text-gray-300">No remarks</span>}
+                        </span>
+                      </td>
+                      <td className="p-4 flex justify-center gap-2">
+                        {submission && (
+                          <>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => window.open(submission.fileUrl, '_blank')}
+                              disabled={!submission.fileUrl}
+                              title={!submission.fileUrl ? "No URL found in database" : "View File"}
+                            >
+                              View
                             </Button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                            <Button size="sm" onClick={() => handleGradeSubmission(submission, student)}>
+                              Grade
+                            </Button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </Card>
-        ) : (
-          <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed">
-            <p className="text-gray-400 font-medium">Please select a class and an assignment to begin grading.</p>
-          </div>
         )}
 
-        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`Grading: ${currentSubmission?.studentName}`}>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {currentSubmission?.fileUrl && (
-              <div className="p-3 bg-blue-50 rounded flex justify-between items-center">
-                <span className="text-sm font-medium">Student's Work:</span>
-                <a href={currentSubmission.fileUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline text-sm font-bold">View File</a>
+        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`Review: ${currentSubmission?.studentName}`}>
+          <div className="mb-6 space-y-4">
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="bg-white rounded border flex items-center justify-center min-h-[150px]">
+                {currentSubmission?.fileUrl ? (
+                  <>
+                    {getFileType(currentSubmission.fileName) === 'image' && (
+                      <img src={currentSubmission.fileUrl} className="max-h-[300px] w-full object-contain" alt="preview" />
+                    )}
+                    {getFileType(currentSubmission.fileName) === 'video' && (
+                      <video src={currentSubmission.fileUrl} controls className="max-h-[300px] w-full" />
+                    )}
+                    {getFileType(currentSubmission.fileName) === 'pdf' && (
+                      <iframe src={currentSubmission.fileUrl} className="w-full h-[300px]" title="PDF Preview" />
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center p-6 text-gray-500 text-sm">
+                    No preview available for: {currentSubmission?.fileName}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Marks Obtained" type="number" name="marks" value={formData.marks} onChange={(e) => setFormData({...formData, marks: e.target.value})} required />
-              <Input label="Total Marks" type="number" name="totalMarks" value={formData.totalMarks} readOnly />
+              <Input label="Marks" type="number" value={formData.marks} onChange={(e) => setFormData({...formData, marks: e.target.value})} required />
+              <Input label="Out of" type="number" value={formData.totalMarks} readOnly />
             </div>
-            <Textarea label="Feedback/Remarks" name="remarks" value={formData.remarks} onChange={(e) => setFormData({...formData, remarks: e.target.value})} rows={3} />
-            <div className="flex gap-3">
-              <Button type="submit" fullWidth>Save Grade</Button>
-              <Button type="button" variant="outline" fullWidth onClick={() => setIsModalOpen(false)}>Cancel</Button>
-            </div>
+            <Textarea label="Remarks" value={formData.remarks} onChange={(e) => setFormData({...formData, remarks: e.target.value})} rows={2} placeholder="Add feedback..." />
+            <Button type="submit" fullWidth>Save Marks</Button>
           </form>
         </Modal>
       </div>
