@@ -6,7 +6,7 @@ import { signUp } from '@/lib/auth';
 import Input, { Select } from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import Alert from '@/components/ui/Alert';
-import { Mail, Lock, User, Phone, ArrowLeft } from 'lucide-react'; // Added ArrowLeft
+import { Mail, Lock, User, Phone, ArrowLeft, Eye, EyeOff } from 'lucide-react'; // Added Eye and EyeOff
 import { USER_ROLES } from '@/lib/utils/constants';
 
 export default function RegisterPage() {
@@ -20,6 +20,7 @@ export default function RegisterPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // Added state for password visibility
   
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -111,16 +112,26 @@ export default function RegisterPage() {
               ]}
             />
             
-            <Input
-              label="Password"
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="Create a password"
-              required
-              icon={<Lock className="w-5 h-5" />}
-            />
+            {/* Password Input with Eye Icon */}
+            <div className="relative">
+              <Input
+                label="Password"
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Create a password"
+                required
+                icon={<Lock className="w-5 h-5" />}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-[45px] text-gray-400 hover:text-blue-600 transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
             
             <Button type="submit" fullWidth disabled={loading} className="mt-6">
               {loading ? 'Creating account...' : 'Register'}
