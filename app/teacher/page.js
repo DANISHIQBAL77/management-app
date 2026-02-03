@@ -282,13 +282,12 @@ export default function TeacherDashboard() {
                     <div className="flex items-center gap-3">
                       <BookOpen className="w-5 h-5 text-blue-600" />
                       <div>
-                        <p className="font-bold text-gray-800">{cls.name || cls.className}</p>
-                        <p className="text-xs text-gray-500">{cls.subject}</p>
+                        <p className="font-bold text-gray-800">{cls.name}</p>
+                        <p className="text-s text-gray-500">Section: {cls.section}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 text-blue-700 font-medium text-sm">
-                      <Clock className="w-4 h-4" />
-                      {cls.time || 'N/A'}
+                      Class Room: {cls.room || 'N/A'}
                     </div>
                   </div>
                 ))
