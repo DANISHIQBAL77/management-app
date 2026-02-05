@@ -111,8 +111,6 @@ export default function RegisterPage() {
                 { value: USER_ROLES.TEACHER, label: 'Teacher' },
               ]}
             />
-            
-            {/* Password Input with Eye Icon */}
             <div className="relative">
               <Input
                 label="Password"
